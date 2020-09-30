@@ -1,4 +1,4 @@
-package com.david.look.solution.common;
+package com.david.look.solution.config;
 
 
 import io.lettuce.core.RedisClient;
@@ -11,7 +11,7 @@ public class RedisCommon {
 
     public static RedisClient getRedisClient(){
         RedisURI redisURI = new RedisURI();
-        redisURI.setHost("172.162.15.111");
+        redisURI.setHost("10.168.2.53");
         redisURI.setPort(6379);
         redisURI.setPassword("redis");
         redisURI.setTimeout(Duration.ofSeconds(100));

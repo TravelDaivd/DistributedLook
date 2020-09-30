@@ -1,4 +1,4 @@
-package com.david.look.solution.common;
+package com.david.look.solution.redisLock;
 
 import io.lettuce.core.RedisAsyncCommandsImpl;
 import io.lettuce.core.RedisFuture;
@@ -13,6 +13,9 @@ import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 使用redis分布式锁解决缓存雪崩
+ */
 @Component
 public class RedisDistributedLock implements AsyncLockInterface {
     Logger logger = LoggerFactory.getLogger(this.getClass());
@@ -20,40 +23,29 @@ public class RedisDistributedLock implements AsyncLockInterface {
     @Autowired
     private RedisAsyncCommandsImpl<String,String> redisAsyncCommands;
 
-    private RedisThing redisThing;
-
-
     @Override
-    public boolean lockUpEX(String lockKey, String lockValue,long expireTime) {
+    public  boolean lockUpEX(String lockKey, String lockValue,long expireTime) throws RedisException {
+        if(existLock(lockKey)){
+           return false;
+        }
         SetArgs setArgs = new SetArgs();
         setArgs.nx();     //仅在键不存在时设置键。
         setArgs.ex(expireTime); //设置指定的到期时间(以秒为单位)
         RedisFuture<String> redisFuture = redisAsyncCommands.set(lockKey, lockValue, setArgs);
         try{
-            if(redisFuture.get().equals("OK")){
-                redisThing.doThings();
-                return true;
-            }
-            return false;
+            return redisFuture.get().equals("OK");
         }catch (Exception e){
             e.printStackTrace();
             logger.error((MessageFormat.format("加锁失败：key：{0};value：{1};错误信息：{2}",lockKey,lockValue,e.getMessage())));
-            return false;
+            throw new RedisException(e.getMessage(),redisFuture);
         }
     }
 
 
     @Override
     public boolean unLock(String key, String value) {
-        List<String> keys = new ArrayList<>();
-        keys.add(key);
-        List<String> args = new ArrayList<>();
-        args.add(value);
-        String[] keyArray = {key};
-        RedisFuture<Long> redisFuture = redisAsyncCommands.eval(AsyncLockInterface.setLuaScript(),
-                ScriptOutputType.INTEGER, keyArray, value);
         try{
-            Long result = redisFuture.get();
+            Long result = this.unOrExistLock(key,value,true).get();
             return result != null && result > 0;
         }catch (Exception e){
             e.printStackTrace();
@@ -62,8 +54,23 @@ public class RedisDistributedLock implements AsyncLockInterface {
         return false;
     }
 
+
+
+
     @Override
-    public boolean existLock(String key) {
+    public  boolean existLock(String key,String value) {
+        try{
+            Long result = this.unOrExistLock(key,value,false).get();
+            return  result != null && result > 0;
+        }catch (Exception e){
+            e.printStackTrace();
+            logger.error((MessageFormat.format("查看是否存在失败：key：{0};错误信息：{1}",key,e.getMessage())));
+            return false;
+        }
+    }
+
+    @Override
+    public synchronized boolean existLock(String key) {
         RedisFuture<Long> redisFuture = redisAsyncCommands.exists(key);
         try{
             Long result = redisFuture.get();
@@ -74,7 +81,6 @@ public class RedisDistributedLock implements AsyncLockInterface {
             return false;
         }
     }
-
 
     @Override
     public String getLockValue(String key) {
@@ -89,7 +95,25 @@ public class RedisDistributedLock implements AsyncLockInterface {
         }
     }
 
-    public void setRedisThing(RedisThing redisThing) {
-        this.redisThing = redisThing;
+    @Override
+    public String getLuaValue(String key) {
+        RedisFuture<String> redisFuture = redisAsyncCommands.eval(AsyncLockInterface.setLuaScript(),
+                ScriptOutputType.VALUE, key);
+        try{
+            return  redisFuture.get();
+        }catch (Exception e){
+            e.printStackTrace();
+            logger.error((MessageFormat.format("获取value失败：key：{0};错误信息：{1}",key,e.getMessage())));
+            return null;
+        }
+    }
+
+    private  RedisFuture<Long> unOrExistLock(String key,String value,boolean bool){
+        List<String> args = new ArrayList<>();
+        args.add(value);
+        String[] keyArray = {key};
+        RedisFuture<Long> redisFuture = redisAsyncCommands.eval(AsyncLockInterface.setLuaScript(bool),
+                ScriptOutputType.INTEGER, keyArray, value);
+        return redisFuture;
     }
 }

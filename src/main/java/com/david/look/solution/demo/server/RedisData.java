@@ -1,4 +1,4 @@
-package com.david.look.solution.server;
+package com.david.look.solution.demo.server;
 
 public class RedisData {
 

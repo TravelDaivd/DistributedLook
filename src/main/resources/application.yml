@@ -2,11 +2,10 @@ server:
   port: 8745
 spring:
   redis:
-    host: 172.162.15.111
+    host: 10.168.2.53
     timeout: 1000
     database: 0
     port: 6379
-    password: redis
     lettuce:
       pool:
         max-active: 1024
